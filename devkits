@@ -1,0 +1,268 @@
+#!/bin/bash
+
+# DevKits Terminal UI - Command Discovery and Execution Tool
+# A terminal interface for discovering and running developer toolkit commands
+
+set -e
+
+# Get the absolute path of the script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Colors for better UI
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+
+# Command registry using arrays (compatible with older bash versions)
+COMMAND_NAMES=()
+COMMAND_SCRIPTS=()
+COMMAND_DESCRIPTIONS=()
+COMMAND_CATEGORIES=()
+
+# Register commands
+register_command() {
+    local name="$1"
+    local description="$2"
+    local script_path="$3"
+    local category="$4"
+    
+    COMMAND_NAMES+=("$name")
+    COMMAND_SCRIPTS+=("$script_path")
+    COMMAND_DESCRIPTIONS+=("$description")
+    COMMAND_CATEGORIES+=("$category")
+}
+
+# Helper function to get command index
+get_command_index() {
+    local name="$1"
+    for i in "${!COMMAND_NAMES[@]}"; do
+        if [[ "${COMMAND_NAMES[$i]}" == "$name" ]]; then
+            echo "$i"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Initialize command registry
+init_commands() {
+    register_command "new-branch" "Create a new git branch from default branch" "$SCRIPT_DIR/start-branch.sh" "Git"
+    register_command "gitnew" "Alias for new-branch command" "$SCRIPT_DIR/start-branch.sh" "Git"
+    register_command "install-nvm" "Install Node Version Manager (nvm) for Node.js development" "$SCRIPT_DIR/install-nvm.sh" "Setup"
+    
+    # Future commands can be added here:
+    # register_command "setup-env" "Setup development environment" "$SCRIPT_DIR/setup-env.sh" "Setup"
+    # register_command "lint-fix" "Fix linting issues" "$SCRIPT_DIR/lint-fix.sh" "Code Quality"
+}
+
+# Display header
+show_header() {
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${WHITE}                    Developer Toolkit                       ${CYAN}║${NC}"
+    echo -e "${CYAN}║${YELLOW}              Command Discovery Interface                  ${CYAN}║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo
+}
+
+# Display all available commands
+show_all_commands() {
+    echo -e "${WHITE}📋 Available Commands:${NC}"
+    echo
+    
+    # Create a sorted list of commands with their indices
+    local sorted_indices=()
+    for i in "${!COMMAND_NAMES[@]}"; do
+        sorted_indices+=("$i")
+    done
+    
+    # Simple bubble sort by command name
+    for ((i = 0; i < ${#sorted_indices[@]}; i++)); do
+        for ((j = i + 1; j < ${#sorted_indices[@]}; j++)); do
+            if [[ "${COMMAND_NAMES[${sorted_indices[i]}]}" > "${COMMAND_NAMES[${sorted_indices[j]}]}" ]]; then
+                local temp=${sorted_indices[i]}
+                sorted_indices[i]=${sorted_indices[j]}
+                sorted_indices[j]=$temp
+            fi
+        done
+    done
+    
+    local current_category=""
+    for idx in "${sorted_indices[@]}"; do
+        local category="${COMMAND_CATEGORIES[$idx]}"
+        if [[ "$category" != "$current_category" ]]; then
+            echo -e "${PURPLE}▶ $category${NC}"
+            current_category="$category"
+        fi
+        echo -e "  ${GREEN}${COMMAND_NAMES[$idx]}${NC} - ${COMMAND_DESCRIPTIONS[$idx]}"
+    done
+    echo
+}
+
+# Search commands
+search_commands() {
+    local search_term="$1"
+    local found=false
+    
+    echo -e "${WHITE}🔍 Search results for: ${YELLOW}$search_term${NC}"
+    echo
+    
+    for i in "${!COMMAND_NAMES[@]}"; do
+        local cmd="${COMMAND_NAMES[$i]}"
+        local desc="${COMMAND_DESCRIPTIONS[$i]}"
+        if [[ "$cmd" =~ $search_term ]] || [[ "$desc" =~ $search_term ]]; then
+            echo -e "  ${GREEN}$cmd${NC} - $desc"
+            found=true
+        fi
+    done
+    
+    if [[ "$found" == false ]]; then
+        echo -e "  ${RED}No commands found matching '$search_term'${NC}"
+    fi
+    echo
+}
+
+# Execute a command
+execute_command() {
+    local cmd_name="$1"
+    local cmd_index
+    
+    if cmd_index=$(get_command_index "$cmd_name"); then
+        local script_path="${COMMAND_SCRIPTS[$cmd_index]}"
+        echo -e "${GREEN}🚀 Executing: $cmd_name${NC}"
+        echo -e "${BLUE}Script: $script_path${NC}"
+        echo
+        
+        # Make sure script is executable
+        chmod +x "$script_path"
+        
+        # Execute the script
+        "$script_path"
+    else
+        echo -e "${RED}❌ Command '$cmd_name' not found${NC}"
+        echo -e "${YELLOW}💡 Use 'search <term>' to find available commands${NC}"
+        echo
+    fi
+}
+
+# Show help
+show_help() {
+    echo -e "${WHITE}📖 DevKits Help${NC}"
+    echo
+    echo -e "${YELLOW}Usage:${NC}"
+    echo -e "  devkits                   ${CYAN}# Interactive mode${NC}"
+    echo -e "  devkits list              ${CYAN}# Show all commands${NC}"
+    echo -e "  devkits search <term>     ${CYAN}# Search for commands${NC}"
+    echo -e "  devkits run <command>     ${CYAN}# Execute a specific command${NC}"
+    echo -e "  devkits help              ${CYAN}# Show this help${NC}"
+    echo
+    echo -e "${YELLOW}Interactive Commands:${NC}"
+    echo -e "  list                      ${CYAN}# Show all available commands${NC}"
+    echo -e "  search <term>             ${CYAN}# Search for commands${NC}"
+    echo -e "  run <command>             ${CYAN}# Execute a command${NC}"
+    echo -e "  help                      ${CYAN}# Show help${NC}"
+    echo -e "  exit, quit, q             ${CYAN}# Exit the program${NC}"
+    echo
+}
+
+# Interactive mode
+interactive_mode() {
+    show_header
+    echo -e "${WHITE}Welcome to the Developer Toolkit! 🛠️${NC}"
+    echo -e "${YELLOW}Type 'help' for available commands or 'list' to see all tools${NC}"
+    echo
+    
+    while true; do
+        echo -n -e "${GREEN}devkits>${NC} "
+        read -r input
+        
+        # Parse input
+        read -ra ARGS <<< "$input"
+        local command="${ARGS[0]}"
+        local args=("${ARGS[@]:1}")
+        
+        case "$command" in
+            "list" | "ls")
+                show_all_commands
+                ;;
+            "search" | "find")
+                if [[ ${#args[@]} -eq 0 ]]; then
+                    echo -e "${RED}❌ Please provide a search term${NC}"
+                    echo -e "${YELLOW}Usage: search <term>${NC}"
+                else
+                    search_commands "${args[*]}"
+                fi
+                ;;
+            "run" | "exec")
+                if [[ ${#args[@]} -eq 0 ]]; then
+                    echo -e "${RED}❌ Please provide a command name${NC}"
+                    echo -e "${YELLOW}Usage: run <command>${NC}"
+                else
+                    execute_command "${args[0]}"
+                fi
+                ;;
+            "help" | "h")
+                show_help
+                ;;
+            "exit" | "quit" | "q")
+                echo -e "${GREEN}👋 Goodbye!${NC}"
+                exit 0
+                ;;
+            "")
+                # Empty input, continue
+                ;;
+            *)
+                # Try to execute as direct command
+                execute_command "$command"
+                ;;
+        esac
+    done
+}
+
+# Main function
+main() {
+    init_commands
+    
+    case "${1:-}" in
+        "list" | "ls")
+            show_header
+            show_all_commands
+            ;;
+        "search" | "find")
+            if [[ -z "${2:-}" ]]; then
+                echo -e "${RED}❌ Please provide a search term${NC}"
+                echo -e "${YELLOW}Usage: devkits search <term>${NC}"
+                exit 1
+            fi
+            show_header
+            search_commands "$2"
+            ;;
+        "run" | "exec")
+            if [[ -z "${2:-}" ]]; then
+                echo -e "${RED}❌ Please provide a command name${NC}"
+                echo -e "${YELLOW}Usage: devkits run <command>${NC}"
+                exit 1
+            fi
+            execute_command "$2"
+            ;;
+        "help" | "-h" | "--help")
+            show_header
+            show_help
+            ;;
+        "")
+            # No arguments - start interactive mode
+            interactive_mode
+            ;;
+        *)
+            # Try to execute as direct command
+            execute_command "$1"
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"
